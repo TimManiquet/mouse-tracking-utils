@@ -1,0 +1,37 @@
+[project]
+name = "mouse-tracking-utils"
+version = "0.1.0"
+description = "Preprocess mouse-tracking data and extract time-resolved target distances."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["mouse-tracking", "behavioural-science", "trajectory-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+authors = [
+    { name = "Tim Maniquet", email = "61991543+TimManiquet@users.noreply.github.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.2",
+    "scipy>=1.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
