@@ -2,20 +2,22 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Ellipse, Rectangle
 
 
-def _draw_box(ax, center, width, height):
-    ax.add_patch(
-        Rectangle(
-            (center[0] - width / 2, center[1] - height / 2),
-            width,
-            height,
-            facecolor="lightgray",
-            edgecolor="gray",
-            zorder=0,
-        )
-    )
+def _draw_box(ax, center, width, height, shape="rectangle"):
+    """Gray background box; a circle or oval is inscribed in the rectangle."""
+    if shape == "rectangle":
+        patch = Rectangle((center[0] - width / 2, center[1] - height / 2), width, height)
+    else:
+        patch = Ellipse(center, width, height)
+    patch.set(facecolor="lightgray", edgecolor="gray", zorder=0)
+    ax.add_patch(patch)
+
+
+def _check_shape(name, value):
+    if value not in ("rectangle", "circle"):
+        raise ValueError(f"{name} must be 'rectangle' or 'circle', not {value!r}.")
 
 
 def _button_rectangles(row):
@@ -79,7 +81,7 @@ def _mirror_flags(df, response_button_order):
     return mirrors, order
 
 
-def _draw_buttons(ax, df, mirror_flags=None, binary_order=None):
+def _draw_buttons(ax, df, mirror_flags=None, binary_order=None, button_shape="rectangle", start_shape="rectangle"):
     """Draw button boxes in screen coordinates, optionally mirroring binary trials."""
     drawn = set()
     for _, row in df.iterrows():
@@ -98,7 +100,7 @@ def _draw_buttons(ax, df, mirror_flags=None, binary_order=None):
             key = ("start", tuple(center), start[2], start[3])
             if key not in drawn:
                 drawn.add(key)
-                _draw_box(ax, center, 2 * start[2] / width, 2 * start[3] / height)
+                _draw_box(ax, center, 2 * start[2] / width, 2 * start[3] / height, start_shape)
 
         buttons = _button_rectangles(row)
         names = binary_order if binary_order is not None else buttons
@@ -114,7 +116,7 @@ def _draw_buttons(ax, df, mirror_flags=None, binary_order=None):
             draw_key = (key, tuple(center), rectangle[2], rectangle[3])
             if draw_key not in drawn:
                 drawn.add(draw_key)
-                _draw_box(ax, center, 2 * rectangle[2] / width, 2 * rectangle[3] / height)
+                _draw_box(ax, center, 2 * rectangle[2] / width, 2 * rectangle[3] / height, button_shape)
 
 
 def _plot_trials(
@@ -129,7 +131,11 @@ def _plot_trials(
     invert_yaxis,
     mirror_flags=None,
     binary_order=None,
+    button_shape="rectangle",
+    start_shape="rectangle",
 ):
+    _check_shape("button_shape", button_shape)
+    _check_shape("start_shape", start_shape)
     missing = [column for column in ("x_std", "y_std") if column not in df.columns]
     if missing:
         raise ValueError(f"Missing trajectory column(s) {missing!r}; preprocess the data first.")
@@ -144,7 +150,7 @@ def _plot_trials(
         palette.setdefault(value, "black" if value is None else cycle[len(palette) % len(cycle)])
 
     if show_buttons:
-        _draw_buttons(ax, df, mirror_flags, binary_order)
+        _draw_buttons(ax, df, mirror_flags, binary_order, button_shape, start_shape)
 
     excluded = set(() if excluded_indices is None else excluded_indices)
     legend = {}
@@ -179,8 +185,14 @@ def plot_trials(
     alpha=0.4,
     show_buttons=True,
     invert_yaxis=True,
+    button_shape="rectangle",
+    start_shape="rectangle",
 ):
     """Plot one or more trials in their original, unmirrored screen coordinates.
+
+    ``button_shape`` / ``start_shape`` are ``'rectangle'`` (default) or
+    ``'circle'``; a circle is drawn as an oval inscribed in the button
+    rectangle when its width and height differ.
 
     Use :func:`plot_binary_trials` instead when binary trials should be mirrored
     to align the semantic response buttons left-to-right.
@@ -194,6 +206,8 @@ def plot_trials(
         alpha=alpha,
         show_buttons=show_buttons,
         invert_yaxis=invert_yaxis,
+        button_shape=button_shape,
+        start_shape=start_shape,
     )
 
 
@@ -207,6 +221,8 @@ def plot_binary_trials(
     alpha=0.4,
     show_buttons=True,
     invert_yaxis=True,
+    button_shape="rectangle",
+    start_shape="rectangle",
 ):
     """Plot binary-task trials, mirroring trials to align the response buttons.
 
@@ -214,7 +230,8 @@ def plot_binary_trials(
     the canonical order. Pass ``response_button_order`` to choose the desired
     left-to-right order explicitly. Each trial's trajectories and button boxes
     are reflected horizontally as needed. This is intended for exactly two
-    response buttons.
+    response buttons. ``button_shape`` / ``start_shape`` work as in
+    :func:`plot_trials`.
     """
     mirrors, order = _mirror_flags(df, response_button_order)
     return _plot_trials(
@@ -228,4 +245,6 @@ def plot_binary_trials(
         invert_yaxis=invert_yaxis,
         mirror_flags=mirrors,
         binary_order=order,
+        button_shape=button_shape,
+        start_shape=start_shape,
     )

@@ -1,0 +1,11 @@
+site_name: Mouse-tracking toolbox
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Input data: input-data.md
+  - Preprocessing and exclusions: preprocessing.md
+  - Distances: distances.md
+  - Data object: data-object.md
+  - Plotting: plotting.md
+theme:
+  name: readthedocs

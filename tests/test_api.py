@@ -263,3 +263,68 @@ def test_rows_with_missing_or_training_events_are_filtered():
     raw["event"] = pd.array([None, "training_trial", "trial"], dtype="string")
     out = preprocess_mouse_tracking_data(raw)
     assert out["stimulus"].tolist() == ["a", "c"]
+
+
+def _interp_df(times, xs):
+    """One preprocessed trial with given sample times (ms) and x pixels (y fixed)."""
+    path = [{"x": x, "y": 200, "t": t, "event": "mousemove"} for t, x in zip(times, xs)]
+    raw = _raw(images=("a.png",), reps=1, mouse_tracking_data=json.dumps(path))
+    return preprocess_mouse_tracking_data(raw)
+
+
+def test_samples_are_linearly_interpolated_and_edges_stay_nan():
+    out = _interp_df([100, 300, 600], [400, 500, 800])  # x_std 0, .25, 1
+    mm = extract_distance(out, metric="position", position_col="x_std", duration=800, sampling_interval=100)
+    series = mm.values[0, 0, 0]
+    assert mm.coordinates["timepoints"] == [0, 100, 200, 300, 400, 500, 600, 700]
+    assert np.isnan(series[0])
+    assert series[1:7] == pytest.approx([0, 0.125, 0.25, 0.25 + 0.75 / 3, 0.25 + 1.5 / 3, 1.0])
+    assert np.isnan(series[7])
+
+
+def test_fill_start_uses_start_button_centre_and_duration_default():
+    out = _interp_df([100, 300], [400, 500])
+    start_x = out["starting_button_position_std"].iloc[0][0]
+    mm = extract_distance(out, metric="position", fill_start=True, sampling_interval=100)
+    series = mm.values[0, 0, 0]
+    assert len(series) == 4  # up to the latest time (300), inclusive
+    assert series[0] == pytest.approx(start_x)
+    assert series[1] == pytest.approx(0.0)
+    with pytest.raises(ValueError):
+        extract_distance(out.drop(columns="starting_button_position_std"), metric="position", fill_start=True)
+
+
+def test_distances_follow_interpolated_positions_and_ignore_nan_padding():
+    out = _interp_df([100, 300], [400, 500])
+    mm = extract_distance(out, duration=500, sampling_interval=100)
+    assert np.isnan(mm.values[0, 0, 0, :, 0]).all()
+    assert np.isfinite(mm.values[0, 0, 0, :, 1:4]).all()
+    assert np.isnan(mm.values[0, 0, 0, :, 4]).all()
+    assert mm.metadata["time_unit"] == "ms"
+
+
+def test_save_with_downsampling(tmp_path):
+    out = _interp_df([0, 1000], [400, 500])
+    mm = extract_distance(out, metric="position")
+    assert mm.shape[-1] == 1001
+    path = mm.save(tmp_path / "x", downsample_hz=250)
+    loaded = MotorMovementData.load(path)
+    assert loaded.shape[-1] == 251
+    assert loaded.coordinates["timepoints"][:2] == [0, 4]
+    assert loaded.metadata["sampling_interval"] == 4
+    assert mm.shape[-1] == 1001
+    with pytest.raises(ValueError):
+        mm.downsample(5000)
+
+
+def test_circular_buttons_are_drawn_as_ellipses():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.patches import Ellipse
+
+    out = _interp_df([0, 100], [400, 500])
+    ax = plot_trials(out, button_shape="circle", start_shape="circle")
+    assert any(isinstance(p, Ellipse) for p in ax.patches)
+    with pytest.raises(ValueError):
+        plot_trials(out, button_shape="star")

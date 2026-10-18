@@ -169,8 +169,45 @@ class MotorMovementData:
         ]
         return type(self)(averaged, dimensions, coordinates, metadata=metadata)
 
-    def save(self, path):
-        """Save values and JSON metadata to a compressed ``.npz`` archive."""
+    def downsample(self, rate_hz):
+        """Return a copy resampled to ``rate_hz`` by keeping every n-th time point.
+
+        The ``timepoints`` dimension must be on a regular grid in ms (as
+        created by :func:`extract_distance`, see ``metadata["sampling_interval"]``).
+        ``rate_hz`` must not exceed the current rate; the step is rounded to a
+        whole number of samples, so e.g. 400 Hz from 1000 Hz becomes 333 Hz.
+        """
+        if "timepoints" not in self.dimensions:
+            raise ValueError("Downsampling needs a 'timepoints' dimension.")
+        interval = self.metadata.get("sampling_interval")
+        if not interval:
+            raise ValueError("The sampling interval (ms) is unknown; cannot downsample.")
+        if rate_hz <= 0:
+            raise ValueError("rate_hz must be positive.")
+        current_rate = 1000.0 / interval
+        if rate_hz > current_rate + 1e-9:
+            raise ValueError(f"rate_hz ({rate_hz}) is higher than the current rate ({current_rate:g} Hz).")
+        step = max(1, int(round(current_rate / rate_hz)))
+        axis = self.axis_of("timepoints")
+        slicer = [slice(None)] * self.ndim
+        slicer[axis] = slice(None, None, step)
+        coordinates = dict(self.coordinates)
+        if "timepoints" in coordinates:
+            coordinates["timepoints"] = coordinates["timepoints"][::step]
+        metadata = dict(self.metadata)
+        metadata["sampling_interval"] = interval * step
+        metadata["downsampled_from_hz"] = current_rate
+        return type(self)(self.values[tuple(slicer)], self.dimensions, coordinates, metadata=metadata)
+
+    def save(self, path, downsample_hz=None):
+        """Save values and JSON metadata to a compressed ``.npz`` archive.
+
+        ``downsample_hz`` (e.g. 250 or 500) optionally downsamples the time
+        axis first (see :meth:`downsample`); the object itself is unchanged.
+        Returns the path written. Reload with :meth:`load`.
+        """
+        if downsample_hz is not None:
+            return self.downsample(downsample_hz).save(path)
         path = Path(path)
         if path.suffix.lower() != ".npz":
             path = path.with_suffix(".npz")
