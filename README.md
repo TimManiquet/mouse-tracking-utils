@@ -27,8 +27,10 @@ print(data)
 data.save("distances.npz", downsample_hz=250)
 ```
 
-Full documentation is in [`docs/`](docs/index.md): input data format,
-preprocessing and exclusions, distances (metrics, ordering, interpolation),
+Two runnable demos are in [`examples/`](examples/): `demo_preprocessing.py` (what
+standardisation and rescaling do) and `demo_distances.py` (euclidean vs cosine vs
+position). Full documentation is in [`docs/`](docs/index.md): input data format,
+workflow, preprocessing and exclusions, distances (metrics, ordering, interpolation),
 the data object and plotting.
 
 ## Development

@@ -1,4 +1,4 @@
-"""Column checking, filtering and preprocessing of raw mouse-tracking trial data.
+"""Column checking and preprocessing of raw mouse-tracking trial data.
 
 Raw files from different experiments name their columns differently.
 :func:`check_columns` finds (or is told) which raw column holds what, and
@@ -10,19 +10,22 @@ Conventions used throughout:
 - Button rectangles are ``(bottom-left x, bottom-left y, width, height)`` in
   pixels, with the origin at the top left of the window (the system of the raw
   mouse coordinates). The "bottom" edge is therefore the larger y value.
-- Standardised coordinates (``*_std``) span ``[-1, 1]`` on both axes.
+- Standardised coordinates (``*_std``) have their origin at the screen centre
+  and, by default, one unit is half of the shorter screen side on both axes.
 """
 
 import json
 import os
 import re
+import warnings
 from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 
-# Columns kept at the end of preprocessing, under their standard names. A column
-# that does not exist in the data is simply left out (never added empty).
+from ._progress import track
+
+# Standard names of the columns the package works with (used by filter_df).
 DEFAULT_COLUMNS = (
     "ppt_number",
     "repetition",
@@ -55,8 +58,8 @@ REQUIRED_INPUT_COLUMNS = (
     "starting_button_position",
 )
 
-# Input columns used when available. ``trial_type`` and ``event`` only serve to
-# select rows (mouse-tracking and main-task trials), which is optional.
+# Input columns used when available. ``trial_type`` and ``event`` are not used
+# by the pipeline itself; they help to write a ``row_mask``.
 OPTIONAL_INPUT_COLUMNS = (
     "trial_type",
     "event",
@@ -421,49 +424,85 @@ def preprocess_mouse_tracking_data(
     column_map=None,
     required_columns=None,
     invert_y=True,
-    filter_data=True,
-    filter_kwargs=None,
+    scaling="min_side",
+    row_mask=None,
+    progress=True,
 ):
-    """Rename, filter, parse and standardise raw trial data in one step.
+    """Parse and standardise raw trial data, keeping all rows and columns.
 
-    Steps: (1) :func:`check_columns` finds the input columns (``column_map``
-    overrides the detection) and they are renamed to the standard names;
-    (2) mouse-tracking trials of the main task are kept (``filter_data``,
-    ``filter_kwargs`` is forwarded to the row filter); (3) trajectories are
-    parsed and scaled to ``[-1, 1]`` by the screen size (y is flipped so up is
-    positive when ``invert_y``); (4) only the columns of ``DEFAULT_COLUMNS``
-    that exist are kept.
+    The output has the same rows and columns as the input, plus the columns
+    computed here. Nothing is dropped or filtered; only the rows that can be
+    processed are filled in, the others get empty values in the new columns.
+    A row is processed when it has mouse-tracking samples, a stimulus, a
+    parsable list of response-button names, a valid screen size and (when
+    those columns exist) parsable response-button and start-button positions.
+    Rows that have mouse-tracking samples but fail another check are left
+    unprocessed and reported in a warning. :func:`processed_trial_mask` gives
+    the processed rows of the output.
 
-    Output columns (standard names):
+    Steps: (1) :func:`check_columns` finds the columns holding the needed
+    information (``column_map`` overrides the detection). Where a column has
+    another name than the standard one, a copy is added under the standard
+    name; your own column is kept. (2) In the processed rows, the stimulus
+    becomes an image ID, button names and positions are parsed, and
+    trajectories are standardised (see ``scaling``).
+
+    Added or filled-in columns (standard names):
 
     - ``ppt_number``: participant (1 if the data has none),
     - ``repetition``: how many times the participant has seen the image so far,
     - ``stimulus``: image ID (file name without extension),
-    - ``response``, ``accuracy``, ``mouse_tracking_targets``,
     - ``response_button_names``: list of button labels,
-    - ``screen_width``, ``screen_height``,
     - ``starting_button_position`` and ``response_button_positions``: pixel
       rectangles (bottom-left x, bottom-left y, width, height), with their
       standardised centres in ``starting_button_position_std`` and
       ``response_button_positions_std`` (``{name: (x, y)}``),
-    - ``time``, ``x_std``, ``y_std``: the trajectory samples.
+    - ``time``, ``x_std``, ``y_std``: the trajectory samples,
+    - ``std_scale``: pixels per standardised unit along (x, y) in that trial.
 
-    ``input_df`` can also be a list of dataframes (one per participant); each
-    is preprocessed separately, gets ``ppt_number`` 1, 2, ... in list order,
-    and the results are concatenated with a fresh index.
+    Args:
+        input_df: raw dataframe, or a list of dataframes (one per
+            participant): each is preprocessed separately, gets ``ppt_number``
+            1, 2, ... in list order, and the results are concatenated with a
+            fresh index.
+        column_map: optional ``{standard_name: your_column}`` saying where the
+            needed information is, e.g. ``{"accuracy": "correct"}``.
+        required_columns: standard names that must be found (see
+            :func:`check_columns`).
+        invert_y: flip y so that up is positive.
+        scaling: how pixels become standardised units, with the origin at the
+            screen centre. ``"min_side"`` (default) divides both axes by half
+            of the shorter screen side, so distances and angles keep their
+            true proportions (a circle of buttons stays a circle; on a
+            landscape screen x spans ``[-width/height, width/height]`` and y
+            ``[-1, 1]``). ``"stretch"`` maps both axes to ``[-1, 1]``, which
+            squeezes the longer side.
+        progress: show a progress bar (per row, or per participant for a list
+            of dataframes). Needs tqdm; silently skipped without it.
+        row_mask: optionally restrict which rows are processed, e.g.
+            ``lambda df: df["event"] != "training_trial"``. A function of the
+            dataframe (after step 1) or a boolean array; for a list of
+            dataframes it must be a function.
     """
+    if scaling not in ("min_side", "stretch"):
+        raise ValueError("scaling must be 'min_side' or 'stretch'.")
     options = dict(
         column_map=column_map,
         required_columns=required_columns,
         invert_y=invert_y,
-        filter_data=filter_data,
-        filter_kwargs=filter_kwargs,
+        scaling=scaling,
+        row_mask=row_mask,
+        progress=False,
     )
+    if isinstance(input_df, (list, tuple)) and row_mask is not None and not callable(row_mask):
+        raise TypeError("For a list of dataframes, row_mask must be a function of the dataframe.")
     if isinstance(input_df, (list, tuple)):
         if len(input_df) == 0:
             raise ValueError("input_df is an empty list.")
         processed = []
-        for ppt_number, single_df in enumerate(input_df, start=1):
+        for ppt_number, single_df in track(
+            enumerate(input_df, start=1), progress, total=len(input_df), desc="Preprocessing", unit="participant"
+        ):
             result = preprocess_mouse_tracking_data(single_df, **options)
             result["ppt_number"] = ppt_number
             processed.append(result)
@@ -471,68 +510,115 @@ def preprocess_mouse_tracking_data(
     if not isinstance(input_df, pd.DataFrame):
         raise TypeError("input_df must be a pandas DataFrame or a list of DataFrames.")
 
-    # 1. standard column names
+    # 1. standard names: add a copy of each mapped column under its standard name
     df = _add_screen_size_columns(input_df)
     mapping = check_columns(df, column_map, required_columns)
-    df = _rename_to_standard(df, mapping)
-
-    # 2. trials to keep
-    if filter_data:
-        df = _filter_rows(df, **(filter_kwargs or {}))
     output = df.copy()
-    # columns computed below must not carry over stale values from the input
-    output = output.drop(columns=list(_COMPUTED_COLUMNS), errors="ignore")
+    for name, source in mapping.items():
+        if source == name:
+            continue
+        if name in output.columns and name not in mapping.values():
+            output = output.rename(columns={name: f"{name}_original"})
+        output[name] = output[source]
+    # computed columns must not carry over stale values from the input
+    output = output.drop(columns=list(_COMPUTED_COLUMNS) + ["std_scale"], errors="ignore")
 
-    # 3. participant, image and repetition
+    # 2. rows that can be processed
+    if row_mask is not None:
+        wanted = row_mask(output) if callable(row_mask) else row_mask
+        wanted = np.asarray(wanted, dtype=bool)
+        if wanted.shape != (len(output),):
+            raise ValueError("row_mask must give one boolean per row.")
+    else:
+        wanted = np.ones(len(output), dtype=bool)
+
     if "ppt_number" not in output.columns:
         output["ppt_number"] = 1
-    output["stimulus"] = output["stimulus"].map(_image_id)
-    if "repetition" not in output.columns:
-        output["repetition"] = output.groupby(["ppt_number", "stimulus"], dropna=False).cumcount() + 1
-
-    # 4. button metadata
-    output["response_button_names"] = output["response_button_names"].map(_parse_names)
-    if "response_button_positions" in output.columns:
-        output["response_button_positions"] = output["response_button_positions"].map(_parse_rectangles)
-    if "starting_button_position" in output.columns:
-        output["starting_button_position"] = output["starting_button_position"].map(_parse_start_rectangle)
-
-    # 5. trajectories
-    unpacked = output["mouse_tracking_data"].map(_trajectory_arrays)
-    xs = unpacked.map(lambda trajectory: trajectory[0])
-    ys = unpacked.map(lambda trajectory: trajectory[1])
-    times = unpacked.map(lambda trajectory: trajectory[2])
-    mismatched = output.index[xs.map(len) != ys.map(len)]
-    if len(mismatched):
-        raise ValueError(f"x and y trajectories must have the same number of samples (rows: {list(mismatched)!r}).")
-    mismatched = output.index[(times.map(len) != 0) & (times.map(len) != xs.map(len))]
-    if len(mismatched):
-        raise ValueError(f"time and trajectory arrays must have the same number of samples (rows: {list(mismatched)!r}).")
-    times = pd.Series(
-        [t if len(t) else np.arange(len(x), dtype=float) for t, x in zip(times, xs)], index=output.index, dtype=object
-    )
-
+    n_rows = len(output)
+    columns = {
+        name: [None] * n_rows
+        for name in ("time", "x_std", "y_std", "response_button_positions_std", "starting_button_position_std", "std_scale")
+    }
+    stimulus = output["stimulus"].tolist()
+    names_col = output["response_button_names"].tolist()
+    positions_col = output["response_button_positions"].tolist() if "response_button_positions" in output else None
+    start_col = output["starting_button_position"].tolist() if "starting_button_position" in output else None
+    processed = np.zeros(n_rows, dtype=bool)
+    skipped = []
     flip = -1.0 if invert_y else 1.0
 
-    def standardise(point, width, height):
-        return (2.0 * point[0] / width - 1.0, flip * (2.0 * point[1] / height - 1.0))
+    for i, (_, row) in track(
+        enumerate(output.iterrows()), progress, total=n_rows, desc="Preprocessing", unit="row"
+    ):
+        x, y, t = _trajectory_arrays(row["mouse_tracking_data"])
+        if len(x) == 0 or not wanted[i]:
+            continue
+        names = _parse_names(row["response_button_names"])
+        try:
+            width, height = _screen_size(row)
+        except ValueError:
+            width = None
+        if width is None or names is None or _is_missing(row["stimulus"]) or len(x) != len(y) or (
+            len(t) and len(t) != len(x)
+        ):
+            skipped.append(output.index[i])
+            continue
+        if scaling == "min_side":
+            scale_x = scale_y = min(width, height) / 2.0
+        else:
+            scale_x, scale_y = width / 2.0, height / 2.0
 
-    x_std, y_std, button_std, start_std = [], [], [], []
-    for (_, row), x, y in zip(output.iterrows(), xs, ys):
-        width, height = _screen_size(row)
-        x_std.append(2.0 * x / width - 1.0)
-        y_std.append(flip * (2.0 * y / height - 1.0))
-        centers = _target_position_map(row.get("response_button_positions"), row["response_button_names"])
-        button_std.append({name: standardise(point, width, height) for name, point in centers.items()})
-        start = _center(row["starting_button_position"]) if "starting_button_position" in output.columns else None
-        start_std.append(None if start is None else standardise(start, width, height))
-    output["time"] = times
-    output["x_std"] = pd.Series(x_std, index=output.index, dtype=object)
-    output["y_std"] = pd.Series(y_std, index=output.index, dtype=object)
-    if "response_button_positions" in output.columns:
-        output["response_button_positions_std"] = pd.Series(button_std, index=output.index, dtype=object)
-    if "starting_button_position" in output.columns:
-        output["starting_button_position_std"] = pd.Series(start_std, index=output.index, dtype=object)
+        def standardise(point, scale_x=scale_x, scale_y=scale_y, width=width, height=height):
+            return ((point[0] - width / 2.0) / scale_x, flip * (point[1] - height / 2.0) / scale_y)
 
-    # 6. keep the standard columns only
-    return _select_columns(output)
+        stimulus[i] = _image_id(row["stimulus"])
+        names_col[i] = names
+        columns["time"][i] = t if len(t) else np.arange(len(x), dtype=float)
+        columns["x_std"][i] = (x - width / 2.0) / scale_x
+        columns["y_std"][i] = flip * (y - height / 2.0) / scale_y
+        columns["std_scale"][i] = (scale_x, scale_y)
+        if positions_col is not None:
+            positions_col[i] = _parse_rectangles(row["response_button_positions"])
+            centers = _target_position_map(row["response_button_positions"], names)
+            columns["response_button_positions_std"][i] = {
+                name: standardise(point) for name, point in centers.items()
+            }
+        if start_col is not None:
+            start_col[i] = _parse_start_rectangle(row["starting_button_position"])
+            center = _center(row["starting_button_position"])
+            columns["starting_button_position_std"][i] = None if center is None else standardise(center)
+        processed[i] = True
+
+    if skipped:
+        warnings.warn(
+            f"{len(skipped)} row(s) with mouse-tracking data were left unprocessed because a needed value "
+            f"(stimulus, button names, screen size or matching sample counts) is missing or invalid; "
+            f"row labels: {skipped[:10]!r}{'...' if len(skipped) > 10 else ''}.",
+            stacklevel=2,
+        )
+
+    output["stimulus"] = pd.Series(stimulus, index=output.index, dtype=object)
+    output["response_button_names"] = pd.Series(names_col, index=output.index, dtype=object)
+    if positions_col is not None:
+        output["response_button_positions"] = pd.Series(positions_col, index=output.index, dtype=object)
+    if start_col is not None:
+        output["starting_button_position"] = pd.Series(start_col, index=output.index, dtype=object)
+    for name, values in columns.items():
+        if name == "response_button_positions_std" and positions_col is None:
+            continue
+        if name == "starting_button_position_std" and start_col is None:
+            continue
+        output[name] = pd.Series(values, index=output.index, dtype=object)
+
+    # repetition: how often each participant has seen each image (processed rows only)
+    if "repetition" not in output.columns:
+        counts = output.loc[processed].groupby(["ppt_number", "stimulus"], dropna=False).cumcount() + 1
+        output["repetition"] = counts.reindex(output.index)
+    return output
+
+
+def processed_trial_mask(df):
+    """Boolean mask of the rows holding a preprocessed trial (they have a trajectory)."""
+    if "x_std" not in df.columns:
+        raise ValueError("Column 'x_std' not found; run preprocess_mouse_tracking_data first.")
+    return df["x_std"].map(lambda value: isinstance(value, np.ndarray) and len(value) > 0).to_numpy(dtype=bool)

@@ -1,7 +1,9 @@
-"""Trial and participant quality filters."""
+"""Trial quality filters."""
 
 import numpy as np
 import pandas as pd
+
+from .preprocessing import processed_trial_mask
 
 
 def exclude_trials(
@@ -111,110 +113,4 @@ def exclude_trials(
 
     if return_indices:
         return output, input_df.index[excluded]
-    return output
-
-
-_ACCURACY_CANDIDATES = ("accuracy", "acc", "ACC", "correct", "is_correct", "correct_response_given")
-_RESPONSE_CANDIDATES = ("response", "pressed_button", "button_pressed", "response_button")
-
-
-def _find_column(df, candidates, user_choice, what):
-    """Return the user's column, or the first candidate that exists and holds data."""
-    if user_choice is not None:
-        if user_choice not in df.columns:
-            raise ValueError(f"Missing {what} column {user_choice!r}.")
-        return user_choice
-    lowered = {column.lower(): column for column in df.columns}
-    for candidate in candidates:
-        column = candidate if candidate in df.columns else lowered.get(candidate.lower())
-        if column is not None and df[column].notna().any():
-            return column
-    return None
-
-
-def exclude_participants(
-    input_df,
-    *,
-    participant_col="ppt_number",
-    min_completed_trials=None,
-    min_accuracy=None,
-    response_col=None,
-    accuracy_col=None,
-    verbose=True,
-):
-    """Exclude participants with too few completed trials or too low accuracy.
-
-    Expects a dataframe with one trial per row and a participant column. A
-    threshold left as None is not applied.
-
-    Args:
-        input_df: dataframe with a participant column.
-        participant_col: column identifying the participant of each trial.
-        min_completed_trials: exclude participants with fewer completed trials.
-        min_accuracy: exclude participants whose mean accuracy (between 0 and
-            1) over their completed trials is lower than this.
-        response_col: column flagging that a response button was pressed (a
-            trial is completed when it is not empty). Detected automatically
-            among ``response``, ``pressed_button``... when None.
-        accuracy_col: column holding trial accuracy (True/False or 0/1).
-            Detected automatically among ``accuracy``, ``acc``, ``correct``...
-            (first one containing data) when None.
-        verbose: print a summary of the exclusions.
-
-    Returns:
-        A copy of input_df without the excluded participants. The excluded
-        participants and the per-reason counts are stored in the
-        `exclusion_summary` entry of the output's `attrs`.
-    """
-    if not isinstance(input_df, pd.DataFrame):
-        raise TypeError("input_df must be a pandas DataFrame.")
-    if participant_col not in input_df.columns:
-        raise ValueError(f"Missing participant identifier column {participant_col!r}.")
-    if min_completed_trials is not None and min_completed_trials < 0:
-        raise ValueError("min_completed_trials must be non-negative.")
-    if min_accuracy is not None and not 0 <= min_accuracy <= 1:
-        raise ValueError("min_accuracy must be between zero and one.")
-
-    completed = None
-    if min_completed_trials is not None or min_accuracy is not None:
-        response_col = _find_column(input_df, _RESPONSE_CANDIDATES, response_col, "response")
-        if response_col is None:
-            raise ValueError("Could not find a response column; specify response_col.")
-        completed = input_df[response_col].notna()
-
-    accuracy = None
-    if min_accuracy is not None:
-        accuracy_col = _find_column(input_df, _ACCURACY_CANDIDATES, accuracy_col, "accuracy")
-        if accuracy_col is None:
-            raise ValueError("Could not find an accuracy column with data; specify accuracy_col.")
-        accuracy = input_df[accuracy_col].map(
-            lambda value: np.nan if pd.isna(value) else float(value in (True, 1, "True", "true", "1", 1.0))
-        )
-
-    too_few_trials, too_inaccurate = [], []
-    for participant, trials in input_df.groupby(participant_col, dropna=False):
-        done = completed.loc[trials.index]
-        if min_completed_trials is not None and done.sum() < min_completed_trials:
-            too_few_trials.append(participant)
-        if min_accuracy is not None:
-            mean_accuracy = accuracy.loc[trials.index][done].mean()
-            if not mean_accuracy >= min_accuracy:
-                too_inaccurate.append(participant)
-
-    rejected = set(too_few_trials) | set(too_inaccurate)
-    output = input_df.loc[~input_df[participant_col].isin(rejected)].copy()
-
-    n_participants = input_df[participant_col].nunique(dropna=False)
-    output.attrs["exclusion_summary"] = {
-        "min_completed_trials": too_few_trials,
-        "min_accuracy": too_inaccurate,
-        "excluded_participants": sorted(rejected, key=str),
-        "total_participants": n_participants,
-    }
-    if verbose:
-        print(
-            f"Excluded {len(rejected)} of {n_participants} participants "
-            f"({len(too_few_trials)} too few completed trials, "
-            f"{len(too_inaccurate)} too low accuracy)."
-        )
     return output

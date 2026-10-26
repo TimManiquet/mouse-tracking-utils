@@ -44,6 +44,10 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../workflow/">Workflow</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../quickstart/">Quickstart</a>
                 </li>
               </ul>
@@ -55,6 +59,10 @@
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">Preprocessing and exclusions</a>
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#preprocess_mouse_tracking_datadf_or_list">preprocess_mouse_tracking_data(df_or_list, ...)</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#standardised-coordinates">Standardised coordinates</a>
+    </li>
+        </ul>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#exclusions">Exclusions</a>
     </li>
@@ -71,6 +79,10 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../plotting/">Plotting</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../demos/">Demos</a>
                 </li>
               </ul>
       </div>
@@ -98,26 +110,42 @@
               
                 <h1 id="preprocessing-and-exclusions">Preprocessing and exclusions</h1>
 <h2 id="preprocess_mouse_tracking_datadf_or_list"><code>preprocess_mouse_tracking_data(df_or_list, ...)</code></h2>
+<p>Hands-off: <strong>all rows and all columns are kept</strong>. The output is your dataframe
+plus the columns computed here; only the rows that can be processed get them
+filled in, the others (surveys, instructions, rows without a trajectory) keep
+empty values. <code>processed_trial_mask(df)</code> tells which rows were processed.</p>
 <ol>
-<li>checks and renames columns to the standard names,</li>
-<li>keeps mouse-tracking trials (drops rows without samples and training trials),</li>
-<li>standardises trajectories: <code>x_std = 2x/width - 1</code>, <code>y_std = 2y/height - 1</code>
-   (sign flipped by default so that up is positive; <code>invert_y=False</code> keeps
-   screen orientation), both in <code>[-1, 1]</code>,</li>
-<li>standardises start and response button centres the same way,</li>
-<li>keeps only the standard columns.</li>
+<li><code>check_columns</code> finds the columns holding the needed information. Where
+   your column has another name, a copy is added under the standard name (yours
+   is kept; <code>column_map={"accuracy": "correct"}</code> says where things are).</li>
+<li>A row is processed when it has mouse samples, a stimulus, button names, a
+   valid screen size and parsable button positions. Rows with samples that fail
+   one of these are reported in a warning. <code>row_mask</code> restricts the rows
+   further, e.g. <code>row_mask=lambda d: ~d["event"].fillna("").str.contains("training")</code>
+   to leave out training trials (they are processed by default).</li>
+<li>Processed rows get: <code>stimulus</code> as image ID, parsed button names and
+   positions, <code>time</code>, <code>x_std</code>, <code>y_std</code>, <code>starting_button_position_std</code>,
+   <code>response_button_positions_std</code>, <code>repetition</code> (if absent), <code>std_scale</code>.</li>
 </ol>
-<p>Given a list of dataframes it concatenates them and adds <code>ppt_number</code> (1, 2, ...).</p>
+<p>Given a list of dataframes it concatenates them and adds <code>ppt_number</code> (1, 2, ...).
+A tqdm progress bar is shown (per row, or per participant for a list); pass <code>progress=False</code> to hide it.</p>
+<h3 id="standardised-coordinates">Standardised coordinates</h3>
+<p>The origin is the screen centre. With <code>scaling="min_side"</code> (default) both axes
+are divided by <strong>half the shorter screen side</strong>, so distances and angles keep
+their true proportions: buttons placed on a circle around the start button stay
+equidistant from it, and <code>x_std</code> spans <code>[-width/height, width/height]</code> on a
+landscape screen while <code>y_std</code> spans <code>[-1, 1]</code>. <code>scaling="stretch"</code> instead maps
+both axes to <code>[-1, 1]</code>, which squeezes the longer side (fine for two buttons on
+a horizontal line, wrong for circular layouts). <code>invert_y=True</code> (default) makes
+up positive. <code>std_scale</code> holds the pixels per standardised unit in each trial.</p>
 <h2 id="exclusions">Exclusions</h2>
-<pre><code class="language-python">kept, excluded_idx = exclude_trials(
-    pre, min_endpoint=0.3, max_endpoint=1.5, min_distance=0.5, max_distance=4,
-    return_indices=True,
-)
-pre = exclude_participants(pre, min_trials=100, min_accuracy=0.7)
-</code></pre>
-<p>Thresholds you leave out are not applied. <code>exclude_trials</code> prints how many
-trials were excluded for each reason. <code>exclude_participants</code> uses completed
-trials (a response was given) and mean accuracy.</p>
+<div class="highlight"><pre><span></span><code><span class="n">kept</span><span class="p">,</span> <span class="n">excluded_idx</span> <span class="o">=</span> <span class="n">exclude_trials</span><span class="p">(</span>
+    <span class="n">pre</span><span class="p">,</span> <span class="n">min_endpoint</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">max_endpoint</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">min_distance</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">max_distance</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+    <span class="n">return_indices</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Rows without a trajectory are never excluded. Thresholds you leave out are not applied. <code>exclude_trials</code> prints how many
+trials were excluded for each reason.</p>
               
             </div>
           </div><footer>
@@ -157,6 +185,7 @@ trials (a response was given) and mean accuracy.</p>
     <script>var base_url = "..";</script>
     <script src="../js/theme_extra.js"></script>
     <script src="../js/theme.js"></script>
+      <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
       <script src="../search/main.js"></script>
     <script>
         jQuery(function () {

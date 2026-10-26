@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Workflow - Mouse-tracking toolbox</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Workflow";
+        var mkdocs_page_input_path = "workflow.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Mouse-tracking toolbox
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Workflow</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#module-1-preprocessing">Module 1: preprocessing</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#module-2-distance-extraction">Module 2: distance extraction</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../quickstart/">Quickstart</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../input-data/">Input data</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../preprocessing/">Preprocessing and exclusions</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../distances/">Distances</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../data-object/">Data object</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../plotting/">Plotting</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../demos/">Demos</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Mouse-tracking toolbox</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Workflow</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="workflow">Workflow</h1>
+<p>The toolbox has two main modules. <strong>Preprocessing</strong> turns raw trial rows into
+standardised trajectories; <strong>distance extraction</strong> turns those trajectories into
+one time-resolved array. Quality control and plotting work on the output of the
+first module.</p>
+<pre class="mermaid"><code>flowchart LR
+    raw[("Raw data&lt;br/&gt;one dataframe / CSV per participant&lt;br/&gt;one row per trial")]
+
+    subgraph pre ["1. Preprocessing: preprocess_mouse_tracking_data"]
+        direction TB
+        c["check_columns&lt;br/&gt;find or map the needed columns"] --&gt; p["parse + standardise&lt;br/&gt;names, buttons, trajectories"]
+    end
+
+    ppdf[("Preprocessed dataframe&lt;br/&gt;same rows and columns&lt;br/&gt;+ x_std, y_std, time, button positions...")]
+
+    subgraph dist ["2. Distance extraction: extract_distance"]
+        direction TB
+        s["select processed trials&lt;br/&gt;and the target order"] --&gt; i["interpolate onto a regular&lt;br/&gt;time grid"] --&gt; m["compute the metric&lt;br/&gt;euclidean / cosine / position"]
+    end
+
+    mmd[("MotorMovementData&lt;br/&gt;participants x repetitions x images&lt;br/&gt;x targets x timepoints")]
+
+    raw --&gt; pre --&gt; ppdf --&gt; dist --&gt; mmd
+    ppdf -. optional .-&gt; ex["exclude_trials"] -. kept rows / indices .-&gt; dist
+    ppdf -.-&gt; plot["plot_trials&lt;br/&gt;plot_binary_trials"]
+    mmd --&gt; use["average / select&lt;br/&gt;downsample / save"]</code></pre>
+<h2 id="module-1-preprocessing">Module 1: preprocessing</h2>
+<p><strong>Input.</strong> A dataframe (or a list, one per participant) with one row per trial
+and the columns described in <a href="../input-data/">Input data</a>. Extra rows (surveys,
+instructions) and extra columns are fine.</p>
+<p><strong>What happens.</strong></p>
+<ol>
+<li><strong>Column check.</strong> <code>check_columns</code> looks for the needed columns under their
+   usual names, or uses your <code>column_map</code>. A copy is added under the standard
+   name (<code>response</code>, <code>accuracy</code>, <code>stimulus</code>...); your own columns are untouched.</li>
+<li><strong>Row selection.</strong> Only rows that can be processed are filled in: they have
+   mouse samples, a stimulus, button names and a screen size (and pass your
+   optional <code>row_mask</code>). The others are kept with empty new columns.</li>
+<li><strong>Parsing.</strong> Button names, button rectangles and the start button are parsed;
+   the image ID is extracted from the stimulus; the mouse samples become <code>time</code>,
+   <code>x</code> and <code>y</code> arrays.</li>
+<li><strong>Standardising.</strong> Pixels become standardised units: origin at the screen
+   centre, one unit = half the shorter screen side (<code>scaling="min_side"</code>, which
+   keeps the aspect ratio), y pointing up. Button and start positions are
+   converted the same way.</li>
+<li><strong>Bookkeeping.</strong> <code>ppt_number</code> and <code>repetition</code> (how often a participant saw an
+   image) are added if absent.</li>
+</ol>
+<p><strong>Output.</strong> The same dataframe plus <code>x_std</code>, <code>y_std</code>, <code>time</code>,
+<code>response_button_positions_std</code>, <code>starting_button_position_std</code>, <code>std_scale</code>,
+<code>repetition</code>, <code>ppt_number</code> and the standard-named copies. <code>processed_trial_mask(df)</code>
+tells which rows hold a trajectory.</p>
+<p><strong>Optional: exclusions.</strong> <code>exclude_trials</code> flags trials by endpoint and travelled
+distance and can return the excluded indices.</p>
+<h2 id="module-2-distance-extraction">Module 2: distance extraction</h2>
+<p><strong>Input.</strong> The preprocessed dataframe (optionally after exclusions).</p>
+<p><strong>What happens.</strong></p>
+<ol>
+<li><strong>Trial selection.</strong> Rows with a trajectory are used. Participants,
+   repetitions and images define the array's first three dimensions.</li>
+<li><strong>Target order.</strong> For euclidean and cosine, the response buttons become the
+   <code>targets</code> dimension, in the order you give with <code>target_names</code> (default: the
+   order found in the data).</li>
+<li><strong>Interpolation.</strong> Mouse samples are irregular. Each trial's x and y are
+   linearly interpolated onto a regular grid (<code>sampling_interval</code>, up to
+   <code>duration</code>). Before the first sample the array is NaN, unless
+   <code>fill_start=True</code> places the cursor at the start button; after the last
+   sample it is NaN.</li>
+<li><strong>Metric.</strong> <code>euclidean</code>: distance to each button. <code>cosine</code>: cosine distance
+   between the movement direction (from the start button) and each button's
+   direction. <code>position</code>: x and y (or one of them) over time.</li>
+</ol>
+<p><strong>Output.</strong> A <a href="../data-object/"><code>MotorMovementData</code></a> with named dimensions
+(<code>participants</code>, <code>repetitions</code>, <code>images</code>, <code>targets</code> or <code>coordinates</code>,
+<code>timepoints</code>), labels and metadata (metric, image IDs, button positions, start
+positions). From there: <code>average</code>, <code>select</code>, <code>downsample</code>, <code>save</code>.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../quickstart/" class="btn btn-neutral float-right" title="Quickstart">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../quickstart/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

@@ -1,11 +1,21 @@
 site_name: Mouse-tracking toolbox
 nav:
   - Home: index.md
+  - Workflow: workflow.md
   - Quickstart: quickstart.md
   - Input data: input-data.md
   - Preprocessing and exclusions: preprocessing.md
   - Distances: distances.md
   - Data object: data-object.md
   - Plotting: plotting.md
+  - Demos: demos.md
 theme:
   name: readthedocs
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js

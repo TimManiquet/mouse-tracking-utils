@@ -44,6 +44,10 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../workflow/">Workflow</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../quickstart/">Quickstart</a>
                 </li>
               </ul>
@@ -64,11 +68,17 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#methods">Methods</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#dimensions-move-when-you-select-or-average">Dimensions move when you select or average</a>
+    </li>
     </ul>
                 </li>
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../plotting/">Plotting</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../demos/">Demos</a>
                 </li>
               </ul>
       </div>
@@ -96,13 +106,18 @@
               
                 <h1 id="motormovementdata"><code>MotorMovementData</code></h1>
 <p>A NumPy array with named dimensions, labels and metadata.</p>
-<pre><code class="language-python">print(data)                  # nice summary: metric, shape, dimensions + labels, NaN %, layout
-data.dimensions              # ('participants', 'repetitions', 'images', 'targets', 'timepoints')
-data.describe_dimensions()   # axis, length and labels per dimension
-data.image_ids               # image of each entry on the images axis
-data.metric                  # 'euclidean', 'cosine' or 'position'
-data.trial_info(participants=1, images=&quot;image_1&quot;)  # button + start positions of those trials
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>                  <span class="c1"># nice summary: metric, shape, dimensions + labels, NaN %, layout</span>
+<span class="n">data</span><span class="o">.</span><span class="n">dimensions</span>              <span class="c1"># (&#39;participants&#39;, &#39;repetitions&#39;, &#39;images&#39;, &#39;targets&#39;, &#39;timepoints&#39;)</span>
+<span class="n">data</span><span class="o">.</span><span class="n">describe_dimensions</span><span class="p">()</span>   <span class="c1"># axis, length and labels per dimension</span>
+<span class="n">data</span><span class="o">.</span><span class="n">axes</span>                    <span class="c1"># current axis of each dimension, e.g. {&#39;participants&#39;: 0, ...}</span>
+<span class="n">data</span><span class="o">.</span><span class="n">axis_of</span><span class="p">(</span><span class="s2">&quot;repetitions&quot;</span><span class="p">)</span>  <span class="c1"># axis of one dimension (updated after select / average)</span>
+<span class="n">data</span><span class="o">.</span><span class="n">images</span>                  <span class="c1"># or data[&quot;images&quot;]: image of each entry on the images axis</span>
+<span class="n">data</span><span class="o">.</span><span class="n">targets</span>                 <span class="c1"># or data[&quot;targets&quot;]: response buttons, in the order of the data</span>
+<span class="n">data</span><span class="o">.</span><span class="n">participants</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">repetitions</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">timepoints</span>   <span class="c1"># same for the other dimensions</span>
+<span class="n">data</span><span class="p">[</span><span class="s2">&quot;coordinates&quot;</span><span class="p">]</span>          <span class="c1"># x/y labels (data.coordinates is the dict of all labels)</span>
+<span class="n">data</span><span class="o">.</span><span class="n">metric</span>                  <span class="c1"># &#39;euclidean&#39;, &#39;cosine&#39; or &#39;position&#39;</span>
+<span class="n">data</span><span class="o">.</span><span class="n">trial_info</span><span class="p">(</span><span class="n">participants</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">images</span><span class="o">=</span><span class="s2">&quot;image_1&quot;</span><span class="p">)</span>  <span class="c1"># button + start positions of those trials</span>
+</code></pre></div>
 <table>
 <thead>
 <tr>
@@ -117,7 +132,7 @@ data.trial_info(participants=1, images=&quot;image_1&quot;)  # button + start po
 </tr>
 <tr>
 <td>image IDs</td>
-<td><code>data.coordinates["images"]</code></td>
+<td><code>data.images</code>, <code>data.coordinates["images"]</code></td>
 </tr>
 <tr>
 <td>response / start button positions</td>
@@ -125,7 +140,11 @@ data.trial_info(participants=1, images=&quot;image_1&quot;)  # button + start po
 </tr>
 <tr>
 <td>meaning of each dimension</td>
-<td><code>data.dimensions</code>, <code>data.describe_dimensions()</code></td>
+<td><code>data.dimensions</code>, <code>data.axes</code>, <code>data.describe_dimensions()</code></td>
+</tr>
+<tr>
+<td>targets (response buttons)</td>
+<td><code>data.targets</code></td>
 </tr>
 <tr>
 <td>time unit and step</td>
@@ -137,11 +156,20 @@ data.trial_info(participants=1, images=&quot;image_1&quot;)  # button + start po
 <ul>
 <li><code>data.average("repetitions")</code> or <code>data.average(["participants", "repetitions"])</code>:
   NaN-aware mean over named dimensions (or axes).</li>
+<li><code>data.select(participants=2)</code> or <code>data.select(images=["b", "a"], repetitions=1)</code>:
+  select by label. A single label removes that dimension; a list keeps it, in
+  the order given. Singular names work (<code>participant=2</code>).</li>
 <li><code>data.downsample(250)</code>: keep every n-th time point to reach about 250 Hz.</li>
 <li><code>data.save("file.npz", downsample_hz=None)</code>: compressed <code>.npz</code> (no pickle).
   <code>downsample_hz=250</code> or <code>500</code> downsamples first; the object is untouched.</li>
 <li><code>MotorMovementData.load("file.npz")</code>.</li>
 </ul>
+<h2 id="dimensions-move-when-you-select-or-average">Dimensions move when you select or average</h2>
+<p><code>select</code> with a single label and <code>average</code> remove a dimension, so the
+remaining ones are renumbered. <code>data.axes</code> and <code>data.axis_of(name)</code> always
+describe the current array. Asking for the labels of a removed dimension (e.g.
+<code>one.participants</code> after <code>select(participants=2)</code>) raises an error that says how
+it was removed.</p>
               
             </div>
           </div><footer>
@@ -181,6 +209,7 @@ data.trial_info(participants=1, images=&quot;image_1&quot;)  # button + start po
     <script>var base_url = "..";</script>
     <script src="../js/theme_extra.js"></script>
     <script src="../js/theme.js"></script>
+      <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
       <script src="../search/main.js"></script>
     <script>
         jQuery(function () {

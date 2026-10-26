@@ -9,7 +9,9 @@ standard column names: ``ppt_number``, ``repetition``, ``stimulus``,
 import numpy as np
 import pandas as pd
 
+from ._progress import track
 from .data_object import MotorMovementData
+from .preprocessing import processed_trial_mask
 
 _BASE_COLUMNS = ("ppt_number", "repetition", "stimulus", "x_std", "y_std", "time")
 
@@ -87,25 +89,27 @@ def extract_distance(
     *,
     metric="euclidean",
     target_names=None,
-    position_col="x_std",
+    position_col=None,
     duration=None,
     sampling_interval=1.0,
     fill_start=False,
+    progress=True,
 ):
     """Extract trajectory distances as a metadata-aware :class:`MotorMovementData`.
 
-    ``input_df`` must be the output of :func:`preprocess_mouse_tracking_data`.
+    ``input_df`` must be the output of :func:`preprocess_mouse_tracking_data`;
+    rows without a trajectory (not preprocessed) are ignored.
 
     Metrics:
 
     - ``'euclidean'``: distance of each time point to each response button.
     - ``'cosine'``: cosine distance between the movement direction (from the
       start button) and the direction of each response button.
-    - ``'position'``: the position itself, taken from ``position_col``
-      (``'x_std'``, ``'y_std'``, ...); there is no targets dimension.
+    - ``'position'``: the x and y screen positions (standardised); there is no
+      targets dimension. Set ``position_col`` to return just one column.
 
-    Dimensions: ``participants``, ``repetitions``, ``images``, [``targets``],
-    ``timepoints``. Missing trials and padding samples are NaN.
+    Dimensions: ``participants``, ``repetitions``, ``images``, [``targets`` or
+    ``coordinates``], ``timepoints``. Missing trials and padding samples are NaN.
 
     Time axis and interpolation: mouse samples are irregular, so the x and y
     positions of each trial are linearly interpolated onto a regular time grid
@@ -117,6 +121,7 @@ def extract_distance(
       ``duration`` are ignored.
     - ``sampling_interval``: grid step in ms (default 1, i.e. one array entry
       per ms). Increase it to get smaller arrays.
+    - ``progress``: show a progress bar over trials (needs tqdm; skipped without it).
     - ``fill_start``: before a trial's first sample the position is unknown, so
       the array is NaN there by default. With ``fill_start=True`` the centre of
       the start button (``starting_button_position_std``) is taken as the
@@ -144,7 +149,7 @@ def extract_distance(
     needed = list(_BASE_COLUMNS)
     if fill_start:
         needed.append("starting_button_position_std")
-    if metric == "position":
+    if metric == "position" and position_col is not None:
         needed.append(position_col)
     else:
         needed.append("response_button_names")
@@ -157,7 +162,9 @@ def extract_distance(
             f"Column(s) {missing!r} not found. Run preprocess_mouse_tracking_data first and "
             "pass its output; it creates the standard columns."
         )
-    df = input_df
+    df = input_df.loc[processed_trial_mask(input_df)]
+    if df.empty:
+        raise ValueError("No preprocessed trials (rows with a trajectory) found in input_df.")
 
     participants = _level_values(df["ppt_number"])
     repetitions = _level_values(df["repetition"])
@@ -194,14 +201,18 @@ def extract_distance(
     grid = np.arange(0.0, duration, sampling_interval)
     if len(grid) == 0:
         raise ValueError("duration is shorter than sampling_interval.")
-    if fill_start and metric == "position" and position_col not in ("x_std", "y_std"):
+    if fill_start and metric == "position" and position_col not in (None, "x_std", "y_std"):
         raise ValueError("fill_start is only available for position_col 'x_std' or 'y_std'.")
     max_timepoints = len(grid)
     dimensions = ["participants", "repetitions", "images"]
     shape = [len(participants), len(repetitions), len(images)]
     if metric == "position":
-        dimensions.append("timepoints")
-        shape.append(max_timepoints)
+        if position_col is None:
+            dimensions.extend(("coordinates", "timepoints"))
+            shape.extend((2, max_timepoints))
+        else:
+            dimensions.append("timepoints")
+            shape.append(max_timepoints)
     else:
         dimensions.extend(("targets", "timepoints"))
         shape.extend((len(target_names), max_timepoints))
@@ -211,7 +222,9 @@ def extract_distance(
     r_index = {value: index for index, value in enumerate(repetitions)}
     i_index = {value: index for index, value in enumerate(images)}
     button_position_metadata = []
-    for row_number, (_, row) in enumerate(df.iterrows()):
+    for row_number, (_, row) in track(
+        enumerate(df.iterrows()), progress, total=len(df), desc=f"Extracting {metric}", unit="trial"
+    ):
         time = times[row_number]
         raw_x, raw_y = _array(row["x_std"]), _array(row["y_std"])
         if len(raw_x) != len(raw_y) or len(raw_x) != len(time):
@@ -238,7 +251,10 @@ def extract_distance(
         y = _resample(time, raw_y, grid, None if origin is None else origin[1])
         index = (p_index[row["ppt_number"]], r_index[row["repetition"]], i_index[row["stimulus"]])
         if metric == "position":
-            if position_col in ("x_std", "y_std"):
+            if position_col is None:
+                values[index + (0, slice(None))] = x
+                values[index + (1, slice(None))] = y
+            elif position_col in ("x_std", "y_std"):
                 values[index] = x if position_col == "x_std" else y
             else:
                 values[index] = _resample(time, row[position_col], grid)
@@ -260,6 +276,8 @@ def extract_distance(
     }
     if metric != "position":
         coordinates["targets"] = target_names
+    elif position_col is None:
+        coordinates["coordinates"] = ["x_std", "y_std"]
     return MotorMovementData(
         values,
         dimensions,

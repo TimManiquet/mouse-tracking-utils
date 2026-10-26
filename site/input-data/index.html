@@ -44,6 +44,10 @@
                 </li>
               </ul>
               <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../workflow/">Workflow</a>
+                </li>
+              </ul>
+              <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../quickstart/">Quickstart</a>
                 </li>
               </ul>
@@ -52,7 +56,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#required-columns">Required columns</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#standard-output-columns">Standard output columns</a>
+    <li class="toctree-l2"><a class="reference internal" href="#output-columns">Output columns</a>
     </li>
     </ul>
                 </li>
@@ -71,6 +75,10 @@
               </ul>
               <ul>
                 <li class="toctree-l1"><a class="reference internal" href="../plotting/">Plotting</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../demos/">Demos</a>
                 </li>
               </ul>
       </div>
@@ -143,20 +151,21 @@
 </tr>
 </tbody>
 </table>
-<p><code>trial_type</code> and <code>event</code> are optional; they only help to keep main-task rows.</p>
+<p><code>trial_type</code> and <code>event</code> are optional and not used by the pipeline; they are handy to write a <code>row_mask</code> (e.g. to leave out training trials).</p>
 <p>A <strong>rectangle</strong> is <code>(bottom-left x, bottom-left y, width, height)</code> in pixels,
 origin at the top left of the window (so "bottom" is the larger y).</p>
 <p>If your columns are named differently, <code>check_columns</code> detects common aliases
 or accepts a mapping, and raises an error listing what is missing:</p>
-<pre><code class="language-python">check_columns(df, column_map={&quot;accuracy&quot;: &quot;correct&quot;})
-preprocess_mouse_tracking_data(df, column_map={&quot;accuracy&quot;: &quot;correct&quot;})
-</code></pre>
-<h2 id="standard-output-columns">Standard output columns</h2>
-<p><code>ppt_number</code>, <code>repetition</code>, <code>stimulus</code>, <code>response</code>, <code>accuracy</code>,
-<code>mouse_tracking_targets</code>, <code>response_button_names</code>, <code>screen_width</code>,
-<code>screen_height</code>, <code>starting_button_position</code>, <code>starting_button_position_std</code>,
-<code>response_button_positions</code>, <code>response_button_positions_std</code>, <code>time</code>, <code>x_std</code>,
-<code>y_std</code>. Columns absent from your data are not added.</p>
+<div class="highlight"><pre><span></span><code><span class="n">check_columns</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">column_map</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="s2">&quot;correct&quot;</span><span class="p">})</span>
+<span class="n">preprocess_mouse_tracking_data</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">column_map</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="s2">&quot;correct&quot;</span><span class="p">})</span>
+</code></pre></div>
+<h2 id="output-columns">Output columns</h2>
+<p>All your columns are kept. Added or filled in (standard names, only where the
+source information exists): <code>ppt_number</code>, <code>repetition</code>, <code>stimulus</code> (image ID),
+<code>response_button_names</code>, <code>starting_button_position</code>,
+<code>starting_button_position_std</code>, <code>response_button_positions</code>,
+<code>response_button_positions_std</code>, <code>time</code>, <code>x_std</code>, <code>y_std</code>, <code>std_scale</code>, plus a
+standard-named copy of any mapped column (<code>response</code>, <code>accuracy</code>, ...).</p>
               
             </div>
           </div><footer>
@@ -196,6 +205,7 @@ preprocess_mouse_tracking_data(df, column_map={&quot;accuracy&quot;: &quot;corre
     <script>var base_url = "..";</script>
     <script src="../js/theme_extra.js"></script>
     <script src="../js/theme.js"></script>
+      <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
       <script src="../search/main.js"></script>
     <script>
         jQuery(function () {

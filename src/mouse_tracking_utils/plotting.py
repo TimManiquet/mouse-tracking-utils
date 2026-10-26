@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Ellipse, Rectangle
 
+from .preprocessing import processed_trial_mask
+
 
 def _draw_box(ax, center, width, height, shape="rectangle"):
     """Gray background box; a circle or oval is inscribed in the rectangle."""
@@ -81,13 +83,22 @@ def _mirror_flags(df, response_button_order):
     return mirrors, order
 
 
+def _scale(row):
+    """Pixels per standardised unit along (x, y) in a trial."""
+    scale = row.get("std_scale")
+    if isinstance(scale, (tuple, list, np.ndarray)) and len(scale) == 2:
+        return float(scale[0]), float(scale[1])
+    width, height = row.get("screen_width"), row.get("screen_height")
+    return float(width) / 2.0, float(height) / 2.0
+
+
 def _draw_buttons(ax, df, mirror_flags=None, binary_order=None, button_shape="rectangle", start_shape="rectangle"):
     """Draw button boxes in screen coordinates, optionally mirroring binary trials."""
     drawn = set()
     for _, row in df.iterrows():
-        width, height = row.get("screen_width"), row.get("screen_height")
-        if not width or not height:
+        if row.get("response_button_positions_std") is None and row.get("starting_button_position_std") is None:
             continue
+        scale_x, scale_y = _scale(row)
         mirror = bool(mirror_flags and mirror_flags.get(row.name, False))
 
         def transform(center):
@@ -100,7 +111,7 @@ def _draw_buttons(ax, df, mirror_flags=None, binary_order=None, button_shape="re
             key = ("start", tuple(center), start[2], start[3])
             if key not in drawn:
                 drawn.add(key)
-                _draw_box(ax, center, 2 * start[2] / width, 2 * start[3] / height, start_shape)
+                _draw_box(ax, center, start[2] / scale_x, start[3] / scale_y, start_shape)
 
         buttons = _button_rectangles(row)
         names = binary_order if binary_order is not None else buttons
@@ -116,7 +127,7 @@ def _draw_buttons(ax, df, mirror_flags=None, binary_order=None, button_shape="re
             draw_key = (key, tuple(center), rectangle[2], rectangle[3])
             if draw_key not in drawn:
                 drawn.add(draw_key)
-                _draw_box(ax, center, 2 * rectangle[2] / width, 2 * rectangle[3] / height, button_shape)
+                _draw_box(ax, center, rectangle[2] / scale_x, rectangle[3] / scale_y, button_shape)
 
 
 def _plot_trials(
@@ -141,6 +152,9 @@ def _plot_trials(
         raise ValueError(f"Missing trajectory column(s) {missing!r}; preprocess the data first.")
     if color_by is not None and color_by not in df.columns:
         raise ValueError(f"Color column {color_by!r} was not found in the dataframe.")
+    df = df.loc[processed_trial_mask(df)]
+    if df.empty:
+        raise ValueError("No preprocessed trials (rows with a trajectory) to plot.")
     if ax is None:
         _, ax = plt.subplots()
     palette = dict(palette or {})
@@ -168,8 +182,11 @@ def _plot_trials(
             legend.setdefault(label, line)
     if legend:
         ax.legend(legend.values(), legend.keys(), title=color_by)
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(*((1, -1) if invert_yaxis else (-1, 1)))
+    # the screen edges in standardised units (the screen is wider than tall for 'min_side' scaling)
+    half_x = max(float(r["screen_width"]) / 2.0 / _scale(r)[0] for _, r in df.iterrows())
+    half_y = max(float(r["screen_height"]) / 2.0 / _scale(r)[1] for _, r in df.iterrows())
+    ax.set_xlim(-half_x, half_x)
+    ax.set_ylim(*((half_y, -half_y) if invert_yaxis else (-half_y, half_y)))
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("x (standardised)")
     ax.set_ylabel("y (standardised)")
@@ -233,6 +250,7 @@ def plot_binary_trials(
     response buttons. ``button_shape`` / ``start_shape`` work as in
     :func:`plot_trials`.
     """
+    df = df.loc[processed_trial_mask(df)]
     mirrors, order = _mirror_flags(df, response_button_order)
     return _plot_trials(
         df,

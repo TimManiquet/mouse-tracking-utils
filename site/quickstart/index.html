@@ -43,6 +43,10 @@
                 <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
                 </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../workflow/">Workflow</a>
+                </li>
+              </ul>
               <ul class="current">
                 <li class="toctree-l1 current"><a class="reference internal current" href="#">Quickstart</a>
     <ul class="current">
@@ -69,6 +73,10 @@
                 <li class="toctree-l1"><a class="reference internal" href="../plotting/">Plotting</a>
                 </li>
               </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../demos/">Demos</a>
+                </li>
+              </ul>
       </div>
     </div>
     </nav>
@@ -93,25 +101,28 @@
             <div class="section" itemprop="articleBody">
               
                 <h1 id="quickstart">Quickstart</h1>
-<pre><code class="language-bash">pip install mouse-tracking-utils
-</code></pre>
-<pre><code class="language-python">from mouse_tracking_utils import (
-    extract_distance, load_demo_data, preprocess_mouse_tracking_data, plot_trials,
-)
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>mouse-tracking-utils
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">mouse_tracking_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">extract_distance</span><span class="p">,</span> <span class="n">load_demo_data</span><span class="p">,</span> <span class="n">preprocess_mouse_tracking_data</span><span class="p">,</span> <span class="n">plot_trials</span><span class="p">,</span>
+<span class="p">)</span>
 
-raw = load_demo_data(4)                        # demo task with 4 response buttons (2 and 8 also exist)
-pre = preprocess_mouse_tracking_data(raw)      # or a list of dataframes, one per participant
-data = extract_distance(pre, metric=&quot;euclidean&quot;, duration=1000)
-print(data)                                    # dimensions, labels, metadata
-by_image = data.average(&quot;participants&quot;)
-data.save(&quot;distances.npz&quot;, downsample_hz=250)
-plot_trials(pre, color_by=&quot;stimulus&quot;)
-</code></pre>
+<span class="n">raw</span> <span class="o">=</span> <span class="n">load_demo_data</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>                        <span class="c1"># demo task with 4 response buttons (2 and 8 also exist)</span>
+<span class="n">pre</span> <span class="o">=</span> <span class="n">preprocess_mouse_tracking_data</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>      <span class="c1"># keeps all rows/columns; or pass a list of dataframes, one per participant</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">extract_distance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s2">&quot;euclidean&quot;</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>                                    <span class="c1"># dimensions, labels, metadata</span>
+<span class="n">by_image</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">average</span><span class="p">(</span><span class="s2">&quot;participants&quot;</span><span class="p">)</span>
+<span class="n">data</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;distances.npz&quot;</span><span class="p">,</span> <span class="n">downsample_hz</span><span class="o">=</span><span class="mi">250</span><span class="p">)</span>
+<span class="n">plot_trials</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">color_by</span><span class="o">=</span><span class="s2">&quot;stimulus&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Next: the <a href="../workflow/">workflow</a> explains what happens at each stage, and the
+demos in <a href="https://github.com/TimManiquet/mouse-tracking-utils/tree/main/examples"><code>examples/</code></a>
+show the results of <a href="../demos/">preprocessing</a> and of distance extraction.</p>
               
             </div>
           </div><footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
-        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../workflow/" class="btn btn-neutral float-left" title="Workflow"><span class="icon icon-circle-arrow-left"></span> Previous</a>
         <a href="../input-data/" class="btn btn-neutral float-right" title="Input data">Next <span class="icon icon-circle-arrow-right"></span></a>
     </div>
 
@@ -135,7 +146,7 @@ plot_trials(pre, color_by=&quot;stimulus&quot;)
   <span class="rst-current-version" data-toggle="rst-current-version">
     
     
-      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+      <span><a href="../workflow/" style="color: #fcfcfc">&laquo; Previous</a></span>
     
     
       <span><a href="../input-data/" style="color: #fcfcfc">Next &raquo;</a></span>
@@ -146,6 +157,7 @@ plot_trials(pre, color_by=&quot;stimulus&quot;)
     <script>var base_url = "..";</script>
     <script src="../js/theme_extra.js"></script>
     <script src="../js/theme.js"></script>
+      <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
       <script src="../search/main.js"></script>
     <script>
         jQuery(function () {

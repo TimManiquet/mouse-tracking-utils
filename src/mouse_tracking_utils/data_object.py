@@ -16,8 +16,19 @@ from pathlib import Path
 import numpy as np
 
 
+_DIMENSION_NAMES = {"participants", "repetitions", "images", "targets", "timepoints", "coordinates"}
+
+
 class MotorMovementData:
-    """Numerical mouse-tracking results with named dimensions and coordinates."""
+    """Numerical mouse-tracking results with named dimensions and coordinates.
+
+    Labels of a dimension are available as attributes and by name:
+    ``data.images`` or ``data["images"]`` (also ``participants``,
+    ``repetitions``, ``targets``, ``timepoints``, when present). Use
+    ``data["coordinates"]`` for the x/y labels, since ``data.coordinates`` is
+    the dict of all labels. ``data.axes`` gives the current index of each
+    dimension.
+    """
 
     def __init__(self, values, dimensions, coordinates=None, *, metadata=None):
         self.values = np.asarray(values)
@@ -51,6 +62,45 @@ class MotorMovementData:
     def image_ids(self):
         """Image ID along the images dimension, if the object has one."""
         return list(self.coordinates.get("images", []))
+
+    @property
+    def axes(self):
+        """Current axis index of each dimension, e.g. ``{"participants": 0, ...}``.
+
+        Always reflects the present array: after ``select`` or ``average``
+        removes a dimension, the remaining ones are renumbered.
+        """
+        return {name: axis for axis, name in enumerate(self.dimensions)}
+
+    def labels(self, dimension):
+        """Labels along a dimension (images, targets, timepoints...)."""
+        if dimension not in self.dimensions:
+            hint = self._removed_hint(dimension)
+            raise KeyError(f"{dimension!r} is not a dimension of this object ({self.dimensions!r}).{hint}")
+        if dimension not in self.coordinates:
+            raise KeyError(f"Dimension {dimension!r} has no labels.")
+        return list(self.coordinates[dimension])
+
+    def _removed_hint(self, dimension):
+        if dimension in self.metadata.get("selection", {}):
+            return f" It was removed by select(); the selection was {self.metadata['selection'][dimension]!r}."
+        if dimension in self.metadata.get("averaged_over", []):
+            return " It was removed by average()."
+        return ""
+
+    def __getattr__(self, name):
+        # only reached when normal lookup fails: dimension names give their labels
+        dimensions = self.__dict__.get("dimensions", ())
+        if name in dimensions and name in self.__dict__.get("coordinates", {}):
+            return list(self.coordinates[name])
+        if name in _DIMENSION_NAMES:
+            raise AttributeError(
+                f"{name!r} is not a dimension of this object ({tuple(dimensions)!r}).{self._removed_hint(name)}"
+            )
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __dir__(self):
+        return sorted(set(super().__dir__()) | {d for d in self.dimensions if d in self.coordinates})
 
     def describe_dimensions(self):
         """Describe each dimension: its axis, length and labels (if any).
@@ -119,6 +169,9 @@ class MotorMovementData:
             f"  screen layout: {len(trials)} trials with response-button positions "
             f"({n_buttons} buttons), start-button position {'available' if has_start else 'not available'}"
         )
+        if self.metadata.get("selection"):
+            chosen = "; ".join(f"{k}={v!r}" for k, v in self.metadata["selection"].items())
+            lines.append(f"  selection:  {chosen}")
         if self.metadata.get("averaged_over"):
             lines.append(f"  averaged over: {', '.join(self.metadata['averaged_over'])}")
         return "\n".join(lines)
@@ -147,6 +200,8 @@ class MotorMovementData:
         return array
 
     def __getitem__(self, key):
+        if isinstance(key, str):
+            return self.labels(key)
         return self.values[key]
 
     def average(self, axis):
@@ -168,6 +223,74 @@ class MotorMovementData:
             self.dimensions[index] for index in axes
         ]
         return type(self)(averaged, dimensions, coordinates, metadata=metadata)
+
+    def select(self, **selections):
+        """Select data by dimension labels, returning a new object.
+
+        Each keyword is a dimension name (the singular also works: ``image``
+        for ``images``) and its value the label(s) to keep:
+
+        - a single label (``participants=2``) keeps that entry and removes the
+          dimension from the result;
+        - a list (``images=["b", "a"]``) keeps the entries in the order given
+          and keeps the dimension.
+
+        Several dimensions can be selected at once. The coordinates and the
+        per-trial metadata of the result follow the selection.
+
+        Example: ``data.select(participants=2, images=["image0", "image1"])``.
+        """
+        if not selections:
+            raise ValueError("Specify at least one dimension to select, e.g. select(participants=2).")
+        indexers, dropped = {}, set()
+        for key, wanted in selections.items():
+            name = next((n for n in (key, key + "s") if n in self.dimensions), None)
+            if name is None:
+                raise ValueError(f"Unknown dimension {key!r}; choose from {self.dimensions!r}.")
+            if name in indexers:
+                raise ValueError(f"Dimension {name!r} was specified more than once.")
+            labels = self.coordinates.get(name)
+            if labels is None:
+                raise ValueError(f"Dimension {name!r} has no labels to select by.")
+            single = isinstance(wanted, str) or not isinstance(wanted, (list, tuple, np.ndarray))
+            items = [wanted] if single else list(wanted)
+            if not items:
+                raise ValueError(f"Nothing was given to select on dimension {name!r}.")
+            positions = []
+            for item in items:
+                if isinstance(item, np.generic):
+                    item = item.item()
+                if item not in labels:
+                    raise ValueError(f"{item!r} is not a label of {name!r}; available labels: {labels!r}.")
+                positions.append(labels.index(item))
+            indexers[name] = positions
+            if single:
+                dropped.add(name)
+
+        values = self.values
+        for name, positions in indexers.items():
+            values = np.take(values, positions, axis=self.dimensions.index(name))
+        # np.take keeps every axis; drop the ones selected with a single label
+        values = values.reshape([n for dim, n in zip(self.dimensions, values.shape) if dim not in dropped])
+        dimensions = tuple(dim for dim in self.dimensions if dim not in dropped)
+        coordinates = {}
+        for dim, labels in self.coordinates.items():
+            if dim in dropped:
+                continue
+            coordinates[dim] = [labels[i] for i in indexers[dim]] if dim in indexers else labels
+
+        metadata = dict(self.metadata)
+        trials = metadata.get("button_positions", {}).get("per_trial")
+        if trials is not None:
+            record_key = {"participants": "participant", "repetitions": "repetition", "images": "image"}
+            keep = {record_key[n]: {self.coordinates[n][i] for i in p} for n, p in indexers.items() if n in record_key}
+            kept = [r for r in trials if all(r.get(k) in v for k, v in keep.items())]
+            metadata["button_positions"] = {**metadata["button_positions"], "per_trial": kept}
+        metadata["selection"] = {
+            **self.metadata.get("selection", {}),
+            **{n: [self.coordinates[n][i] for i in p] for n, p in indexers.items()},
+        }
+        return type(self)(values, dimensions, coordinates, metadata=metadata)
 
     def downsample(self, rate_hz):
         """Return a copy resampled to ``rate_hz`` by keeping every n-th time point.

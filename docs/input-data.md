@@ -17,7 +17,7 @@ One row per trial; one dataframe (CSV) per participant. Mouse samples live in a
 | `response_button_positions` | one rectangle per button |
 | `starting_button_position` | rectangle of the start button |
 
-`trial_type` and `event` are optional; they only help to keep main-task rows.
+`trial_type` and `event` are optional and not used by the pipeline; they are handy to write a `row_mask` (e.g. to leave out training trials).
 
 A **rectangle** is `(bottom-left x, bottom-left y, width, height)` in pixels,
 origin at the top left of the window (so "bottom" is the larger y).
@@ -30,10 +30,11 @@ check_columns(df, column_map={"accuracy": "correct"})
 preprocess_mouse_tracking_data(df, column_map={"accuracy": "correct"})
 ```
 
-## Standard output columns
+## Output columns
 
-`ppt_number`, `repetition`, `stimulus`, `response`, `accuracy`,
-`mouse_tracking_targets`, `response_button_names`, `screen_width`,
-`screen_height`, `starting_button_position`, `starting_button_position_std`,
-`response_button_positions`, `response_button_positions_std`, `time`, `x_std`,
-`y_std`. Columns absent from your data are not added.
+All your columns are kept. Added or filled in (standard names, only where the
+source information exists): `ppt_number`, `repetition`, `stimulus` (image ID),
+`response_button_names`, `starting_button_position`,
+`starting_button_position_std`, `response_button_positions`,
+`response_button_positions_std`, `time`, `x_std`, `y_std`, `std_scale`, plus a
+standard-named copy of any mapped column (`response`, `accuracy`, ...).
