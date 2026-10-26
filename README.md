@@ -1,4 +1,4 @@
-# mouse-tracking-utils
+# Mouse tracking utilities
 
 `mouse-tracking-utils` preprocesses mouse-tracking trial data and computes
 time-resolved trajectory distances to response targets. It supports raw CSV
@@ -39,3 +39,7 @@ the data object and plotting.
 uv run pytest
 uv build
 ```
+
+## Feedback
+
+Get in touch if this library can be improved in any way!
