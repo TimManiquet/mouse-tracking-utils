@@ -4,6 +4,8 @@
 time-resolved trajectory distances to response targets. It supports raw CSV
 files and dataframes, and includes synthetic 2-, 4-, and 8-button demo data.
 
+It is made to analyse data from continuous motor movement tracking experiments, such as the one shown in [this example template](https://github.com/TimManiquet/mouse_tracker_template).
+
 ## Installation
 
 ```bash
